@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Mail, Clock, MapPin, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Mail, Clock, MapPin, ArrowRight, CheckCircle2, AlertCircle } from "lucide-react";
 import PageHero from "../components/PageHero";
 import Reveal from "../components/Reveal";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -17,7 +17,10 @@ interface FormErrors {
   message?: string;
 }
 
+type SubmitStatus = "idle" | "submitting" | "success" | "error";
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const FORMSPREE_ENDPOINT = import.meta.env.VITE_FORMSPREE_ENDPOINT;
 
 const INFO_ITEMS = [
   { icon: Mail, label: "sytenest@gmail.com", href: "mailto:sytenest@gmail.com" },
@@ -35,7 +38,7 @@ export default function Contact() {
     message: "",
   });
   const [errors, setErrors] = useState<FormErrors>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [status, setStatus] = useState<SubmitStatus>("idle");
 
   function validate(current: FormValues): FormErrors {
     const next: FormErrors = {};
@@ -54,12 +57,32 @@ export default function Contact() {
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const validationErrors = validate(values);
     setErrors(validationErrors);
-    if (Object.keys(validationErrors).length === 0) {
-      setSubmitted(true);
+    if (Object.keys(validationErrors).length > 0) return;
+
+    if (!FORMSPREE_ENDPOINT) {
+      setStatus("error");
+      return;
+    }
+
+    setStatus("submitting");
+    try {
+      const response = await fetch(FORMSPREE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          name: values.name,
+          email: values.email,
+          business: values.business,
+          message: values.message,
+        }),
+      });
+      setStatus(response.ok ? "success" : "error");
+    } catch {
+      setStatus("error");
     }
   }
 
@@ -93,7 +116,7 @@ export default function Contact() {
 
           <Reveal delay={100}>
             <div className="rounded-2xl border border-white/10 bg-panel/60 p-6 sm:p-8">
-              {submitted ? (
+              {status === "success" ? (
                 <div className="flex flex-col items-center justify-center py-10 text-center">
                   <CheckCircle2 size={40} className="text-accent" />
                   <h3 className="mt-4 text-xl font-bold text-white">Enquiry sent.</h3>
@@ -103,6 +126,18 @@ export default function Contact() {
                 </div>
               ) : (
                 <form noValidate onSubmit={handleSubmit} className="space-y-6">
+                  {status === "error" && (
+                    <div className="flex items-start gap-2.5 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-300">
+                      <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                      <span>
+                        Something went wrong sending that — please try again, or email directly at{" "}
+                        <a href="mailto:sytenest@gmail.com" className="underline underline-offset-2">
+                          sytenest@gmail.com
+                        </a>
+                        .
+                      </span>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                     <div>
                       <label htmlFor="name" className="text-sm font-medium text-white">
@@ -166,10 +201,11 @@ export default function Contact() {
 
                   <button
                     type="submit"
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3.5 text-sm font-semibold text-ink transition-colors hover:bg-accent-dark"
+                    disabled={status === "submitting"}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3.5 text-sm font-semibold text-ink transition-colors hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Send enquiry
-                    <ArrowRight size={16} />
+                    {status === "submitting" ? "Sending..." : "Send enquiry"}
+                    {status !== "submitting" && <ArrowRight size={16} />}
                   </button>
 
                   <p className="text-center text-xs text-muted">
